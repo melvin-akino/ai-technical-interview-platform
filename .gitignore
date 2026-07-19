@@ -1,0 +1,43 @@
+# ---- Secrets & credentials (NEVER commit) ----
+.env
+.env.*
+!.env.example
+# Private keys / EC2 keypairs / TLS material
+*.pem
+*.key
+aurainterview-key*
+eic_test_*
+selfsigned.crt
+selfsigned.cnf
+# Generated deploy script — contains the Gemini API key inline
+finish_deployment.ps1
+user_data.sh
+
+# ---- Build artifacts / shipped images ----
+*.tar
+*.tar.gz
+deploy_temp/
+deploy-*.tar
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+backend/venv/
+venv/
+.venv/
+
+# ---- Node / frontend ----
+node_modules/
+frontend/dist/
+dist/
+*.local
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+*.log
+
+# Claude Code local settings
+.claude/settings.local.json

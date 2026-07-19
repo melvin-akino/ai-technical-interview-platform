@@ -1,0 +1,22 @@
+# No domain yet: bind all interfaces on 80/443 with an explicit self-signed cert
+# (covers this server's IP + "localhost" as SANs — see selfsigned.cnf/selfsigned.crt).
+# `tls internal` alone doesn't work for a bare, hostname-less ":443" block: Caddy has
+# no name to issue an on-demand cert for, so it fails the handshake for every client.
+#
+# Once you have a domain, replace the block below with:
+#
+#   yourdomain.com {
+#       reverse_proxy frontend:80
+#   }
+#
+# and Caddy will automatically request/renew a real Let's Encrypt certificate instead —
+# no other changes needed (DNS must point the domain at this server's IP first).
+
+:443 {
+    tls /etc/caddy/selfsigned.crt /etc/caddy/selfsigned.key
+    reverse_proxy frontend:80
+}
+
+:80 {
+    reverse_proxy frontend:80
+}

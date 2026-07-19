@@ -1,0 +1,145 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+
+:root {
+  /* HSL Tailored Color Palette */
+  --bg-base: hsl(220, 20%, 8%);
+  --bg-surface: hsl(220, 20%, 12%);
+  --bg-surface-elevated: hsl(220, 20%, 16%);
+  
+  --primary: hsl(260, 85%, 65%);
+  --primary-glow: hsla(260, 85%, 65%, 0.15);
+  --primary-hover: hsl(260, 90%, 70%);
+  
+  --secondary: hsl(190, 90%, 50%);
+  --secondary-glow: hsla(190, 90%, 50%, 0.15);
+  
+  --accent: hsl(320, 85%, 60%);
+  
+  --text-primary: hsl(220, 20%, 95%);
+  --text-secondary: hsl(220, 15%, 70%);
+  --text-muted: hsl(220, 10%, 45%);
+  
+  --success: hsl(145, 80%, 45%);
+  --success-glow: hsla(145, 80%, 45%, 0.15);
+  
+  --warning: hsl(40, 90%, 55%);
+  
+  --danger: hsl(355, 85%, 55%);
+  --danger-glow: hsla(355, 85%, 55%, 0.15);
+  
+  --border: hsl(220, 15%, 18%);
+  --border-focus: hsl(260, 85%, 65%);
+  
+  /* Glassmorphism Details */
+  --glass-bg: rgba(18, 22, 33, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-shadow: rgba(0, 0, 0, 0.4);
+  
+  /* Layout constraints */
+  --sidebar-width: 280px;
+  --header-height: 70px;
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'Fira Code', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Universal animations */
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 5px var(--primary-glow);
+  }
+  50% {
+    box-shadow: 0 0 20px var(--primary-glow);
+  }
+  100% {
+    box-shadow: 0 0 5px var(--primary-glow);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Global utility classes */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px 0 var(--glass-shadow);
+  border-radius: 16px;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-btn {
+  background: linear-gradient(135deg, var(--primary), hsl(260, 90%, 60%));
+  color: white;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  box-shadow: 0 4px 15px var(--primary-glow);
+}
+
+.gradient-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--primary-glow);
+  opacity: 0.95;
+}
+
+.gradient-btn:active {
+  transform: translateY(0);
+}
