@@ -449,7 +449,21 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         return
 
     await manager.connect(session.id, websocket)
-    
+
+    # Anchor started_at to when the candidate actually enters the workspace, not when they
+    # first loaded the page. Every keystroke/proctoring row stores seconds_elapsed relative to
+    # started_at, so a candidate who opens the exam and only returns hours later would otherwise
+    # produce timelines dominated by idle time (observed: a 55-minute exam spanning 12.8 hours).
+    # Only re-anchor while no activity has been recorded yet, so reconnecting mid-exam (refresh,
+    # dropped wifi) never rewinds the clock on work already logged.
+    has_activity = (
+        db.query(models.CodeKeystrokeLog).filter(models.CodeKeystrokeLog.session_id == session.id).first()
+        or db.query(models.ProctoringEvent).filter(models.ProctoringEvent.session_id == session.id).first()
+    )
+    if not has_activity:
+        session.started_at = datetime.datetime.utcnow()
+        db.commit()
+
     # Store the latest code state in memory during websocket session to reduce DB write spam
     latest_code_state = session.latest_code or ""
     messages = db.query(models.InterviewMessage).filter(

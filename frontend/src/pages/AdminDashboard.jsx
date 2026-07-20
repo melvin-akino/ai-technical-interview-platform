@@ -9,6 +9,27 @@ import {
   Sliders, LogOut, Info, Copy, Shield, HelpCircle, RefreshCw, Database, Pause
 } from 'lucide-react'
 
+// `seconds_elapsed` is stored relative to session.started_at, which is stamped when the
+// candidate first opens the exam page. If they then idle (or abandon and return hours later)
+// every timeline is dominated by dead time — e.g. a 55-minute exam rendering across a 12.8-hour
+// span, crushing the replay scrubber and proctoring markers against the right edge.
+// Rebasing against the earliest recorded activity gives a meaningful "time spent working" axis.
+// Kept display-side on purpose so stored values remain an accurate audit trail.
+const getActivityBaseline = (detail) => {
+  if (!detail) return 0
+  const times = [
+    ...(detail.code_keystroke_logs || []).map(l => l.seconds_elapsed || 0),
+    ...(detail.proctoring_events || []).map(e => e.seconds_elapsed || 0)
+  ]
+  return times.length ? Math.min(...times) : 0
+}
+
+const formatElapsed = (secs) => {
+  const total = Math.max(0, Math.round(secs || 0))
+  const m = Math.floor(total / 60)
+  return `${m}m ${String(total % 60).padStart(2, '0')}s`
+}
+
 function AdminDashboard({ onBackToDashboard, onLogout }) {
   const [activeTab, setActiveTab] = useState('submissions') // 'submissions' | 'jobs' | 'settings'
   const [sessions, setSessions] = useState([])
@@ -1540,8 +1561,10 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
                                     <span>{playbackActive ? 'Pause' : 'Play Replay'}</span>
                                   </button>
 
-                                  <span style={{ minWidth: '40px', textAlign: 'right' }}>
-                                    {playbackIndex !== -1 ? `${questionLogs[playbackIndex]?.seconds_elapsed}s` : 'Final'}
+                                  <span style={{ minWidth: '52px', textAlign: 'right' }}>
+                                    {playbackIndex !== -1
+                                      ? formatElapsed((questionLogs[playbackIndex]?.seconds_elapsed || 0) - getActivityBaseline(sessionDetail))
+                                      : 'Final'}
                                   </span>
 
                                   <input 
@@ -1560,8 +1583,8 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
                                     style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--primary)' }}
                                   />
 
-                                  <span style={{ minWidth: '40px' }}>
-                                    {questionLogs[questionLogs.length - 1]?.seconds_elapsed}s
+                                  <span style={{ minWidth: '52px' }}>
+                                    {formatElapsed((questionLogs[questionLogs.length - 1]?.seconds_elapsed || 0) - getActivityBaseline(sessionDetail))}
                                   </span>
 
                                   <select 
@@ -1666,20 +1689,17 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
                             
                             {/* Render markers along the line */}
                             {(() => {
-                              const maxSeconds = Math.max(600, ...sessionDetail.proctoring_events.map(e => e.seconds_elapsed || 0));
+                              const baseline = getActivityBaseline(sessionDetail);
+                              const rel = (e) => Math.max(0, (e.seconds_elapsed || 0) - baseline);
+                              const maxSeconds = Math.max(600, ...sessionDetail.proctoring_events.map(rel));
                               return sessionDetail.proctoring_events.map((evt, idx) => {
-                                const percentage = 2 + ((evt.seconds_elapsed || 0) / maxSeconds) * 96;
-                                const formatTime = (secs) => {
-                                  const mins = Math.floor(secs / 60);
-                                  const s = secs % 60;
-                                  return `${mins}m ${s}s`;
-                                };
-                                
+                                const percentage = 2 + (rel(evt) / maxSeconds) * 96;
+
                                 const isFocus = evt.event_type === 'focus_loss';
                                 return (
                                   <div
                                     key={idx}
-                                    title={`${isFocus ? 'Focus Loss' : 'Clipboard Paste'} at ${formatTime(evt.seconds_elapsed || 0)}`}
+                                    title={`${isFocus ? 'Focus Loss' : 'Clipboard Paste'} at ${formatElapsed(rel(evt))}`}
                                     style={{
                                       position: 'absolute',
                                       left: `${percentage}%`,
@@ -1701,10 +1721,9 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
                             <span>Start (0m 00s)</span>
                             <span>{(() => {
-                              const maxSecs = Math.max(600, ...sessionDetail.proctoring_events.map(e => e.seconds_elapsed || 0));
-                              const m = Math.floor(maxSecs / 60);
-                              const s = maxSecs % 60;
-                              return `End (${m}m ${s}s)`;
+                              const baseline = getActivityBaseline(sessionDetail);
+                              const maxSecs = Math.max(600, ...sessionDetail.proctoring_events.map(e => Math.max(0, (e.seconds_elapsed || 0) - baseline)));
+                              return `End (${formatElapsed(maxSecs)})`;
                             })()}</span>
                           </div>
                           {/* Legend */}
@@ -2955,13 +2974,20 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
           margin-bottom: 0.5rem;
         }
         .editor-sandbox {
-          height: 400px;
+          height: 460px;
           flex-shrink: 0;
           display: flex;
           flex-direction: column;
         }
+        /* Must be a flex column: it stacks the question tabs, the Monaco replay viewer,
+           and the playback control bar. Without display:flex the viewer's "flex: 1" is
+           inert, its height resolves to auto, and Monaco's 100% height collapses to 0 —
+           leaving only the tabs and control bar visible over empty background. */
         .inspector-editor-wrapper {
           flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
           border: 1px solid var(--border);
           border-radius: 8px;
           overflow: hidden;

@@ -24,7 +24,12 @@ function InterviewSession({ sessionId, jobId, onEndInterview, onBackToDashboard 
   const voiceSessionRef = useRef(null)
 
   const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')
-  const WS_URL = API_URL.replace('http://', 'ws://').replace('https://', 'wss://')
+  // Build an explicit absolute ws:// / wss:// origin. In production API_URL is '' (relative),
+  // which would leave WS_URL empty and rely on the browser resolving a relative WebSocket URL;
+  // deriving it from window.location instead guarantees the right scheme (wss:// on HTTPS).
+  const WS_URL = API_URL
+    ? API_URL.replace('http://', 'ws://').replace('https://', 'wss://')
+    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
 
   // Fetch initial session state
   useEffect(() => {
