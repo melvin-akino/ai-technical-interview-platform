@@ -52,7 +52,7 @@ class Candidate(Base):
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
-    resume_path = Column(String, nullable=True)
+    resume_path = Column(String, nullable=True)  # original filename only
     extracted_skills = Column(Text, nullable=True)
     experience_summary = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -103,6 +103,15 @@ class InterviewSession(Base):
     focus_losses = Column(Integer, default=0)
     copy_pastes = Column(Integer, default=0)
     time_away_seconds = Column(Integer, default=0)
+
+    # CV assessment captured at match time. Previously this was computed by Gemini, returned to
+    # the browser once, and discarded — so recruiters had no record of why a candidate was
+    # shortlisted. Persisted here (rather than storing the raw CV) so it can be reviewed and
+    # downloaded later. Skill lists are stored as comma-separated strings.
+    fit_score = Column(Integer, nullable=True)
+    matching_skills = Column(Text, nullable=True)
+    missing_skills = Column(Text, nullable=True)
+    match_analysis = Column(Text, nullable=True)
 
     company = relationship("Company", back_populates="sessions")
     candidate = relationship("Candidate", back_populates="sessions")

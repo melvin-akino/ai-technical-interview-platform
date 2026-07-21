@@ -1,6 +1,6 @@
 import json
 import datetime
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db import models
@@ -205,12 +205,17 @@ async def upload_resume(
             job_id=job.id,
             selected_language=selected_language,
             status="active",
-            expires_at=db_expires_at
+            expires_at=db_expires_at,
+            # Persist the CV assessment so it can be reviewed/downloaded later
+            fit_score=match_result.match_score,
+            matching_skills=", ".join(match_result.matching_skills or []),
+            missing_skills=", ".join(match_result.missing_skills or []),
+            match_analysis=match_result.analysis
         )
         db.add(session)
         db.commit()
         db.refresh(session)
-        
+
         return {
             "session_id": session.id,
             "session_token": session.session_token,
@@ -507,7 +512,12 @@ def match_existing_candidate(
             job_id=job.id,
             selected_language=payload.selected_language,
             status="active",
-            expires_at=db_expires_at
+            expires_at=db_expires_at,
+            # Persist the CV assessment so it can be reviewed/downloaded later
+            fit_score=match_result.match_score,
+            matching_skills=", ".join(match_result.matching_skills or []),
+            missing_skills=", ".join(match_result.missing_skills or []),
+            match_analysis=match_result.analysis
         )
         db.add(session)
         db.commit()
@@ -673,7 +683,13 @@ async def batch_upload_resumes(
                 job_id=job.id,
                 selected_language=selected_language,
                 status="active",
-                expires_at=db_expires_at
+                expires_at=db_expires_at,
+                # Persist the CV assessment so it can be reviewed/downloaded later.
+                # Batch matching returns plain dicts (not the pydantic model used elsewhere).
+                fit_score=match_item.get("match_score", 0),
+                matching_skills=", ".join(match_item.get("matching_skills") or []),
+                missing_skills=", ".join(match_item.get("missing_skills") or []),
+                match_analysis=match_item.get("analysis", "")
             )
             db.add(session)
             db.commit()

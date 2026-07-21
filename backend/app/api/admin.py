@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import re
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db import models
 from app.api.auth import get_current_user
+from app.services.pdf_reports import build_cv_assessment_pdf, build_evaluation_pdf
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -146,6 +148,12 @@ def get_session_details(
         },
         "status": session.status,
         "selected_language": session.selected_language,
+        "cv_assessment": {
+            "fit_score": session.fit_score,
+            "matching_skills": session.matching_skills,
+            "missing_skills": session.missing_skills,
+            "analysis": session.match_analysis
+        } if (session.fit_score is not None or session.match_analysis) else None,
         "started_at": session.started_at.isoformat(),
         "ended_at": session.ended_at.isoformat() if session.ended_at else None,
         "final_code": session.latest_code or final_code,
@@ -260,3 +268,63 @@ def update_company_settings(
         "api_key_configured": bool(company.custom_api_key),
         "webhook_url": company.webhook_url
     }
+
+
+def _resolve_session(session_id: str, current_user, db):
+    """Look up a session by numeric id or token, scoped to the caller's company."""
+    from sqlalchemy import String
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.company_id == current_user.company_id,
+        (models.InterviewSession.session_token == session_id) |
+        (models.InterviewSession.id.cast(String) == session_id)
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    return session
+
+
+def _pdf_response(content: bytes, filename: str):
+    safe = re.sub(r'[^A-Za-z0-9._-]+', '_', filename).strip('_') or "report.pdf"
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe}"'}
+    )
+
+
+@router.get("/sessions/{session_id}/cv-assessment.pdf")
+def download_cv_assessment(
+    session_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Download the CV assessment (parsed profile + AI fit analysis) as a PDF."""
+    session = _resolve_session(session_id, current_user, db)
+    if session.fit_score is None and not session.match_analysis:
+        raise HTTPException(
+            status_code=404,
+            detail="No CV assessment stored for this session. Assessments are captured when a "
+                   "candidate is matched to a job; re-run the match to generate one."
+        )
+    pdf = build_cv_assessment_pdf(session)
+    return _pdf_response(pdf, f"cv_assessment_{session.candidate.name}_{session.job.title}.pdf")
+
+
+@router.get("/sessions/{session_id}/evaluation.pdf")
+def download_evaluation(
+    session_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Download the interview evaluation (AI grading + proctoring + code) as a PDF."""
+    session = _resolve_session(session_id, current_user, db)
+    feedback = db.query(models.FeedbackReport).filter(
+        models.FeedbackReport.session_id == session.id
+    ).first()
+    if not feedback:
+        raise HTTPException(
+            status_code=404,
+            detail="This interview has not been graded yet, so there is no evaluation to download."
+        )
+    pdf = build_evaluation_pdf(session, feedback)
+    return _pdf_response(pdf, f"evaluation_{session.candidate.name}_{session.job.title}.pdf")

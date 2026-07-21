@@ -6,7 +6,7 @@ import {
   Trash2, Edit, Plus, X, Search, Sparkles, 
   ArrowLeft, MessageSquare, BookOpen, Volume2, 
   Mail, Play, CheckCircle2, ChevronDown, ChevronUp, Loader2,
-  Sliders, LogOut, Info, Copy, Shield, HelpCircle, RefreshCw, Database, Pause
+  Sliders, LogOut, Info, Copy, Shield, HelpCircle, RefreshCw, Database, Pause, Download
 } from 'lucide-react'
 
 // `seconds_elapsed` is stored relative to session.started_at, which is stamped when the
@@ -589,6 +589,39 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
   }
 
   const [copiedSessionId, setCopiedSessionId] = useState(null)
+  const [downloading, setDownloading] = useState(null) // 'cv' | 'evaluation' | null
+
+  // Downloads are authenticated, so a plain <a href> won't work (it can't send the bearer
+  // token). Fetch the PDF as a blob, then trigger a temporary object-URL download.
+  const handleDownloadReport = async (sessionId, kind) => {
+    const path = kind === 'cv' ? 'cv-assessment.pdf' : 'evaluation.pdf'
+    setDownloading(kind)
+    try {
+      const res = await authFetch(`${API_URL}/api/v1/admin/sessions/${sessionId}/${path}`)
+      if (!res.ok) {
+        let detail = 'Download failed.'
+        try { detail = (await res.json()).detail || detail } catch (e) { /* non-JSON error body */ }
+        alert(detail)
+        return
+      }
+      const blob = await res.blob()
+      const disposition = res.headers.get('Content-Disposition') || ''
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = match ? match[1] : path
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+      alert('Could not download the report. Please try again.')
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   const handleCopyInviteLink = (token, e) => {
     e.stopPropagation() // Prevent row click inspection trigger
@@ -1444,7 +1477,31 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <button 
+                    <button
+                      onClick={() => handleDownloadReport(sessionDetail.session_id, 'cv')}
+                      disabled={downloading !== null || !sessionDetail.cv_assessment}
+                      className="report-download-btn"
+                      title={sessionDetail.cv_assessment
+                        ? 'Download the CV assessment (parsed profile + AI fit analysis) as PDF'
+                        : 'No CV assessment stored for this session — re-run the candidate match to generate one'}
+                    >
+                      <Download size={14} />
+                      {downloading === 'cv' ? 'Preparing…' : 'CV Assessment'}
+                    </button>
+
+                    <button
+                      onClick={() => handleDownloadReport(sessionDetail.session_id, 'evaluation')}
+                      disabled={downloading !== null || !sessionDetail.feedback}
+                      className="report-download-btn"
+                      title={sessionDetail.feedback
+                        ? 'Download the interview evaluation (scores, feedback, proctoring, code) as PDF'
+                        : 'This interview has not been graded yet'}
+                    >
+                      <Download size={14} />
+                      {downloading === 'evaluation' ? 'Preparing…' : 'Evaluation'}
+                    </button>
+
+                    <button
                       onClick={() => handleResetSession(sessionDetail.session_id)}
                       className="gradient-btn reset-session-btn"
                       style={{
@@ -2465,6 +2522,34 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
           align-items: center;
           gap: 0.75rem;
         }
+        /* Self-contained so it never depends on .btn-secondary, which lives in
+           ResumeUploader's style block and only exists while that component is mounted —
+           outside it the browser default (light background + light text) took over. */
+        .report-download-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 0.5rem 0.9rem;
+          font-size: 0.8rem;
+          font-weight: 600;
+          border-radius: 8px;
+          background: var(--bg-surface-elevated);
+          border: 1px solid var(--border);
+          color: var(--text-primary);
+          cursor: pointer;
+          transition: var(--transition-smooth);
+        }
+        .report-download-btn:hover:not(:disabled) {
+          border-color: var(--primary);
+          color: var(--primary);
+          background: var(--primary-glow);
+        }
+        .report-download-btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          color: var(--text-muted);
+        }
+
         .delete-action-btn, .email-action-btn, .copy-action-btn, .inspect-action-btn {
           background: transparent;
           border: none;

@@ -41,3 +41,7 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Editor/tool backups
+*.bak
+*.orig
