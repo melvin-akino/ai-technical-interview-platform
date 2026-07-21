@@ -236,41 +236,26 @@ Write-Host "Public IP Address: $publicIp" -ForegroundColor Green
 Write-Host "Instance ID: $instanceId" -ForegroundColor Green
 Write-Host "=========================================================" -ForegroundColor Green
 
-# Generate a self-signed TLS cert covering this instance's IP (no domain yet, so Caddy's
-# on-demand "tls internal" can't issue one for a bare, hostname-less :443 listener).
-Write-Host "Generating self-signed TLS certificate for $publicIp..." -ForegroundColor Yellow
-$sslCnf = @"
-[req]
-distinguished_name = req_distinguished_name
-x509_extensions = v3_req
-prompt = no
-
-[req_distinguished_name]
-CN = aurainterview
-
-[v3_req]
-subjectAltName = @alt_names
-
-[alt_names]
-IP.1 = $publicIp
-DNS.1 = localhost
-"@
-Set-Content -Path selfsigned.cnf -Value $sslCnf -NoNewline -Encoding utf8NoBOM
-openssl req -x509 -nodes -newkey rsa:2048 -keyout selfsigned.key -out selfsigned.crt -days 825 -config selfsigned.cnf 2>$null
-if (-not (Test-Path selfsigned.crt) -or -not (Test-Path selfsigned.key)) {
-    Write-Host "WARNING: Could not generate a self-signed certificate (openssl not found?). HTTPS will not work until one is added manually." -ForegroundColor Yellow
-}
+# TLS is handled entirely by Caddy, which obtains and renews a real Let's Encrypt
+# certificate for the domains listed in the Caddyfile. No local cert generation needed.
+#
+# IMPORTANT when deploying to a NEW instance: this launches a server with a fresh IP, but
+# the Caddyfile names aurainterview.online, whose DNS still points at the existing server.
+# Caddy on the new box therefore cannot pass the ACME HTTP-01 challenge and will serve no
+# certificate until you repoint the domain's A records (@ and www) at the new IP below —
+# ideally by moving the Elastic IP across, which keeps DNS unchanged.
+Write-Host "TLS: Caddy will request a Let's Encrypt certificate once DNS points at this host." -ForegroundColor Yellow
 
 # Output deployment commands (uses Windows' own OpenSSH client explicitly, not PATH-resolved ssh/scp)
 $deployScript = @"
 `$SSH = "`$env:WINDIR\System32\OpenSSH\ssh.exe"
 `$SCP = "`$env:WINDIR\System32\OpenSSH\scp.exe"
 
-# Copy the pre-built images, compose file, Caddyfile, and TLS cert to the host server
-& `$SCP -i aurainterview-key.pem -o StrictHostKeyChecking=no $imagesTar docker-compose.deploy.yml Caddyfile selfsigned.crt selfsigned.key ec2-user@$($publicIp):/home/ec2-user/
+# Copy the pre-built images, compose file, and Caddyfile to the host server
+& `$SCP -i aurainterview-key.pem -o StrictHostKeyChecking=no $imagesTar docker-compose.deploy.yml Caddyfile ec2-user@$($publicIp):/home/ec2-user/
 
 # Load the images and start the stack (no build step runs on the server)
-& `$SSH -i aurainterview-key.pem -o StrictHostKeyChecking=no ec2-user@$($publicIp) "mkdir -p app && mv $imagesTar docker-compose.deploy.yml Caddyfile selfsigned.crt selfsigned.key app/ && cd app && sudo docker load -i $imagesTar && echo 'GEMINI_API_KEY=$geminiKey' > .env && sudo docker compose -f docker-compose.deploy.yml up -d"
+& `$SSH -i aurainterview-key.pem -o StrictHostKeyChecking=no ec2-user@$($publicIp) "mkdir -p app && mv $imagesTar docker-compose.deploy.yml Caddyfile app/ && cd app && sudo docker load -i $imagesTar && echo 'GEMINI_API_KEY=$geminiKey' > .env && sudo docker compose -f docker-compose.deploy.yml up -d"
 "@
 Set-Content -Path finish_deployment.ps1 -Value $deployScript -NoNewline -Encoding utf8NoBOM
 

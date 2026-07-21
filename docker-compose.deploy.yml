@@ -42,8 +42,6 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./selfsigned.crt:/etc/caddy/selfsigned.crt
-      - ./selfsigned.key:/etc/caddy/selfsigned.key
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

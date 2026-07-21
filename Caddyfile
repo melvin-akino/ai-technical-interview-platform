@@ -1,22 +1,18 @@
-# No domain yet: bind all interfaces on 80/443 with an explicit self-signed cert
-# (covers this server's IP + "localhost" as SANs — see selfsigned.cnf/selfsigned.crt).
-# `tls internal` alone doesn't work for a bare, hostname-less ":443" block: Caddy has
-# no name to issue an on-demand cert for, so it fails the handshake for every client.
-#
-# Once you have a domain, replace the block below with:
-#
-#   yourdomain.com {
-#       reverse_proxy frontend:80
-#   }
-#
-# and Caddy will automatically request/renew a real Let's Encrypt certificate instead —
-# no other changes needed (DNS must point the domain at this server's IP first).
-
-:443 {
-    tls /etc/caddy/selfsigned.crt /etc/caddy/selfsigned.key
-    reverse_proxy frontend:80
+# Global options — the ACME account email receives certificate expiry/problem notices.
+{
+    email akino.melvin@gmail.com
 }
 
-:80 {
+# Caddy automatically obtains and renews a real Let's Encrypt certificate for both names,
+# and redirects HTTP -> HTTPS. Requires DNS A records pointing here and ports 80 (ACME
+# HTTP-01 challenge + redirect) and 443 open in the security group.
+#
+# Do NOT add a catch-all ":443" block with an explicit `tls <cert> <key>`: its connection
+# policy has no host matcher, so it wins for every SNI on that port and would serve that
+# certificate instead of the managed one — silently breaking TLS for these domains.
+# For the same reason, never list these hostnames as SANs on a manually supplied cert:
+# Caddy then logs "skipping automatic certificate management ... already loaded" and never
+# contacts Let's Encrypt at all.
+aurainterview.online, www.aurainterview.online {
     reverse_proxy frontend:80
 }
