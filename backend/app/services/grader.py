@@ -1,7 +1,7 @@
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-from app.core.gemini import get_gemini_client, get_system_settings
+from app.core.gemini import get_system_settings, generate_content
 
 class GradingResult(BaseModel):
     overall_score: int = Field(description="Integrative performance score from 1 (poor) to 100 (flawless)")
@@ -21,7 +21,6 @@ def generate_session_feedback(
     """
     Grades the candidate's final performance by evaluating the entire chat history and code updates using Gemini.
     """
-    client = get_gemini_client(company_id=company_id)
     
     # Format message history
     transcript_str = ""
@@ -55,7 +54,7 @@ def generate_session_feedback(
     """
     
     model_name, _, _ = get_system_settings(company_id=company_id)
-    response = client.models.generate_content(
+    response = generate_content(company_id=company_id,
         model=model_name,
         contents=prompt,
         config=types.GenerateContentConfig(

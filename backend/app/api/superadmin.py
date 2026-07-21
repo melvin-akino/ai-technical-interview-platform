@@ -27,6 +27,7 @@ class UserCreateUnderCompany(BaseModel):
 
 class ApiKeyCreate(BaseModel):
     api_key: str
+    label: str | None = None  # optional human-friendly name, e.g. "prod-key-2"
 
 # 1. Manage Companies
 @router.post("/companies")
@@ -157,7 +158,7 @@ def assume_user(user_id: int, db: Session = Depends(get_db)):
 # 2. Manage Platform Keys
 @router.post("/api-keys")
 def add_platform_key(payload: ApiKeyCreate, db: Session = Depends(get_db)):
-    key = models.PlatformApiKey(api_key=payload.api_key)
+    key = models.PlatformApiKey(api_key=payload.api_key, label=getattr(payload, "label", None))
     db.add(key)
     db.commit()
     db.refresh(key)
@@ -165,8 +166,28 @@ def add_platform_key(payload: ApiKeyCreate, db: Session = Depends(get_db)):
 
 @router.get("/api-keys")
 def list_platform_keys(db: Session = Depends(get_db)):
-    keys = db.query(models.PlatformApiKey).all()
-    return [{"id": k.id, "api_key": k.api_key[:6] + "..." + k.api_key[-4:], "is_active": k.is_active} for k in keys]
+    """Pool status. Keys rotate least-recently-used; a key that returns 429 is put on a
+    cooldown and skipped until it expires, and one rejected for auth is deactivated."""
+    import datetime as _dt
+    now = _dt.datetime.utcnow()
+    keys = db.query(models.PlatformApiKey).order_by(models.PlatformApiKey.id).all()
+    result = []
+    for k in keys:
+        cooling = bool(k.cooldown_until and k.cooldown_until > now)
+        result.append({
+            "id": k.id,
+            "label": k.label,
+            "api_key": k.api_key[:6] + "..." + k.api_key[-4:],
+            "is_active": k.is_active,
+            "status": "disabled" if not k.is_active else ("cooling_down" if cooling else "available"),
+            "cooldown_until": k.cooldown_until.isoformat() if k.cooldown_until else None,
+            "cooldown_seconds_remaining": int((k.cooldown_until - now).total_seconds()) if cooling else 0,
+            "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+            "failure_count": k.failure_count or 0,
+            "total_calls": k.total_calls or 0,
+            "last_error": k.last_error,
+        })
+    return result
 
 @router.delete("/api-keys/{id}")
 def delete_platform_key(id: int, db: Session = Depends(get_db)):

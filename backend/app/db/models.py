@@ -37,12 +37,22 @@ class User(Base):
 
 
 class PlatformApiKey(Base):
+    """A pooled Gemini API key. Requests rotate across active keys (least-recently-used) and
+    fail over to the next key when one is rate limited, so a single exhausted quota no longer
+    takes the whole platform down."""
     __tablename__ = "platform_api_keys"
 
     id = Column(Integer, primary_key=True, index=True)
     api_key = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    label = Column(String, nullable=True)          # human-friendly name, e.g. "prod-key-1"
+    last_used_at = Column(DateTime, nullable=True)  # drives least-recently-used rotation
+    cooldown_until = Column(DateTime, nullable=True)  # set on 429; key is skipped until then
+    failure_count = Column(Integer, default=0)     # consecutive failures; resets on success
+    total_calls = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
 
 
 class Candidate(Base):

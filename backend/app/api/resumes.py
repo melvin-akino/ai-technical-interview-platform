@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db import models
 from app.services.resume_parser import parse_pdf_resume
-from app.core.gemini import match_resume_to_job, get_gemini_client, get_system_settings, batch_parse_resumes, batch_match_resumes
+from app.core.gemini import match_resume_to_job, get_system_settings, batch_parse_resumes, batch_match_resumes, generate_content
 from google.genai import types
 from pydantic import BaseModel, Field
 from app.api.auth import get_current_user
@@ -404,7 +404,6 @@ def suggest_job_exam(
     if not job:
         raise HTTPException(status_code=404, detail="Job posting not found")
         
-    client = get_gemini_client()
     api_model, _, _ = get_system_settings()
     
     prompt = f"""
@@ -424,7 +423,7 @@ def suggest_job_exam(
     """
     
     try:
-        response = client.models.generate_content(
+        response = generate_content(company_id=current_user.company_id,
             model=api_model,
             contents=prompt,
             config=types.GenerateContentConfig(

@@ -1,5 +1,6 @@
 import os
 import json
+import datetime
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
@@ -90,6 +91,118 @@ def get_gemini_client(company_id: int = None):
     api_key_to_use = custom_api_key or settings.GEMINI_API_KEY or None
     return genai.Client(api_key=api_key_to_use)
 
+# ---------------------------------------------------------------------------
+# Gemini key pool
+#
+# Every Gemini call goes through generate_content() below. It rotates across the active
+# platform keys (least-recently-used) and, when a key is rate limited or rejected, cools it
+# down and immediately retries on the next one. Previously a single 429 surfaced to the user
+# as a hard 500 — which is exactly what happened during QA once the one key was exhausted.
+# ---------------------------------------------------------------------------
+
+QUOTA_COOLDOWN_SECONDS = 60      # base cooldown after a 429; grows with consecutive failures
+MAX_COOLDOWN_SECONDS = 900
+
+
+def _classify_error(exc) -> str:
+    """Bucket a provider error so we know whether to rotate, disable, or give up."""
+    msg = str(exc).upper()
+    if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "QUOTA" in msg or "RATE LIMIT" in msg:
+        return "quota"
+    if any(t in msg for t in ("API_KEY_INVALID", "PERMISSION_DENIED", "UNAUTHENTICATED", "401", "403")):
+        return "auth"
+    return "other"
+
+
+def _candidate_keys(db, company_id):
+    """Keys to try, in order: the company's own key, then the platform pool (LRU), then the
+    environment fallback. Returns (key_value, PlatformApiKey_row_or_None) tuples."""
+    candidates = []
+
+    if company_id:
+        company = db.query(models.Company).filter(models.Company.id == company_id).first()
+        if company and company.custom_api_key:
+            candidates.append((company.custom_api_key, None))
+
+    now = datetime.datetime.utcnow()
+    pool = db.query(models.PlatformApiKey).filter(
+        models.PlatformApiKey.is_active == True,
+        (models.PlatformApiKey.cooldown_until == None) | (models.PlatformApiKey.cooldown_until <= now)
+    ).order_by(
+        models.PlatformApiKey.last_used_at.asc().nullsfirst()  # least-recently-used first
+    ).all()
+    candidates.extend((k.api_key, k) for k in pool)
+
+    if settings.GEMINI_API_KEY:
+        candidates.append((settings.GEMINI_API_KEY, None))
+
+    # De-duplicate while preserving order (the env key is often also in the pool)
+    seen, unique = set(), []
+    for value, row in candidates:
+        if value and value not in seen:
+            seen.add(value)
+            unique.append((value, row))
+    return unique
+
+
+def _record_success(db, row):
+    if row is None:
+        return
+    row.last_used_at = datetime.datetime.utcnow()
+    row.total_calls = (row.total_calls or 0) + 1
+    row.failure_count = 0
+    row.cooldown_until = None
+    row.last_error = None
+    db.commit()
+
+
+def _record_failure(db, row, kind, exc):
+    if row is None:
+        return
+    row.failure_count = (row.failure_count or 0) + 1
+    row.last_used_at = datetime.datetime.utcnow()
+    row.last_error = f"{kind}: {str(exc)[:400]}"
+    if kind == "quota":
+        # Exponential backoff per key so a persistently throttled key drops out of rotation.
+        backoff = min(QUOTA_COOLDOWN_SECONDS * (2 ** (row.failure_count - 1)), MAX_COOLDOWN_SECONDS)
+        row.cooldown_until = datetime.datetime.utcnow() + datetime.timedelta(seconds=backoff)
+    elif kind == "auth":
+        # A rejected key will not fix itself — take it out of rotation for a human to look at.
+        row.is_active = False
+    db.commit()
+
+
+def generate_content(*, model, contents, config, company_id: int = None):
+    """Single entry point for all Gemini generation, with key rotation and failover.
+
+    Raises the last provider error only after every available key has been tried.
+    """
+    db = SessionLocal()
+    try:
+        candidates = _candidate_keys(db, company_id)
+        if not candidates:
+            raise RuntimeError("No Gemini API key is configured (no company key, no active platform key, no env key).")
+
+        last_exc = None
+        for api_key, row in candidates:
+            try:
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(model=model, contents=contents, config=config)
+                _record_success(db, row)
+                return response
+            except Exception as exc:
+                kind = _classify_error(exc)
+                last_exc = exc
+                _record_failure(db, row, kind, exc)
+                if kind == "other":
+                    # Not a key problem (bad prompt, schema, network) — another key will not help.
+                    raise
+                # quota/auth: fall through and try the next key
+        raise last_exc
+    finally:
+        db.close()
+
+
 def get_gemini_api_key(company_id: int = None) -> str:
     db = SessionLocal()
     custom_api_key = None
@@ -123,7 +236,6 @@ class JobMatchResult(BaseModel):
     analysis: str = Field(description="Detailed textual explanation of the match, strengths, and weaknesses")
 
 def analyze_resume_text(text: str, company_id: int = None) -> ExtractedResumeInfo:
-    client = get_gemini_client(company_id=company_id)
     prompt = f"""
     You are an expert HR resume screening assistant.
     Analyze the following extracted resume text and extract the candidate details.
@@ -133,7 +245,7 @@ def analyze_resume_text(text: str, company_id: int = None) -> ExtractedResumeInf
     """
     
     model_name, _, _ = get_system_settings(company_id=company_id)
-    response = client.models.generate_content(
+    response = generate_content(company_id=company_id,
         model=model_name,
         contents=prompt,
         config=types.GenerateContentConfig(
@@ -151,7 +263,6 @@ def match_resume_to_job(
     job_description: str,
     company_id: int = None
 ) -> JobMatchResult:
-    client = get_gemini_client(company_id=company_id)
     prompt = f"""
     You are an expert technical recruiter matching a candidate's profile to a specific job opening.
     Evaluate the candidate's skills and experience summary against the job title and job description.
@@ -170,7 +281,7 @@ def match_resume_to_job(
     """
     
     model_name, _, _ = get_system_settings(company_id=company_id)
-    response = client.models.generate_content(
+    response = generate_content(company_id=company_id,
         model=model_name,
         contents=prompt,
         config=types.GenerateContentConfig(
@@ -229,7 +340,6 @@ batch_match_schema = {
 
 
 def batch_parse_resumes(raw_texts: list[str], company_id: int = None) -> list[dict]:
-    client = get_gemini_client(company_id=company_id)
     
     resumes_prompt = ""
     for idx, text in enumerate(raw_texts):
@@ -245,7 +355,7 @@ def batch_parse_resumes(raw_texts: list[str], company_id: int = None) -> list[di
     """
     
     model_name, _, _ = get_system_settings(company_id=company_id)
-    response = client.models.generate_content(
+    response = generate_content(company_id=company_id,
         model=model_name,
         contents=prompt,
         config=types.GenerateContentConfig(
@@ -263,7 +373,6 @@ def batch_match_resumes(
     job_description: str,
     company_id: int = None
 ) -> list[dict]:
-    client = get_gemini_client(company_id=company_id)
     
     profiles_prompt = ""
     for c in candidates_data:
@@ -286,7 +395,7 @@ def batch_match_resumes(
     """
     
     model_name, _, _ = get_system_settings(company_id=company_id)
-    response = client.models.generate_content(
+    response = generate_content(company_id=company_id,
         model=model_name,
         contents=prompt,
         config=types.GenerateContentConfig(

@@ -1,7 +1,7 @@
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-from app.core.gemini import get_gemini_client, get_system_settings, pydantic_to_gemini_schema
+from app.core.gemini import get_system_settings, pydantic_to_gemini_schema, generate_content
 
 class IndividualQuestion(BaseModel):
     title: str = Field(description="The short title of this specific challenge (e.g. 'Question 1: Array Manipulation')")
@@ -48,7 +48,6 @@ def generate_initial_problem(
     company_id: int = None,
     persona: str = "standard"
 ) -> CodingProblem:
-    client = get_gemini_client(company_id=company_id)
     
     selected_persona_prompt = PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["standard"])
     
@@ -88,7 +87,7 @@ def generate_initial_problem(
         full_prompt += f"System Persona & Recruiting Directives:\n{prompt_modifier}\n\n"
     full_prompt += prompt
     
-    response = client.models.generate_content(
+    response = generate_content(company_id=company_id,
         model=model_name,
         contents=full_prompt,
         config=types.GenerateContentConfig(
@@ -113,7 +112,6 @@ def generate_interviewer_response(
     """
     Evaluates the conversation history and the latest code state to generate the interviewer's next response or hint.
     """
-    client = get_gemini_client(company_id=company_id)
     
     selected_persona_prompt = PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["standard"])
     
@@ -153,7 +151,7 @@ def generate_interviewer_response(
         full_prompt += f"System Persona & Recruiting Directives:\n{prompt_modifier}\n\n"
     full_prompt += prompt
 
-    response = client.models.generate_content(
+    response = generate_content(company_id=company_id,
         model=model_name,
         contents=full_prompt,
         config=types.GenerateContentConfig(
@@ -181,7 +179,6 @@ def translate_problem_to_language(
     target_language: str,
     company_id: int = None
 ) -> TranslatedExam:
-    client = get_gemini_client(company_id=company_id)
     
     prompt = f"""
     You are an expert technical interviewer and language translator.
@@ -210,7 +207,7 @@ def translate_problem_to_language(
     
     model_name, temp, _ = get_system_settings(company_id=company_id)
     
-    response = client.models.generate_content(
+    response = generate_content(company_id=company_id,
         model=model_name,
         contents=prompt,
         config=types.GenerateContentConfig(
