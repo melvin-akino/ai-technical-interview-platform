@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 from app.core.config import settings
+from app.core.crypto import decrypt
 from app.db.session import SessionLocal
 from app.db import models
 
@@ -68,29 +69,6 @@ def get_system_settings(company_id: int = None):
     finally:
         db.close()
 
-def get_gemini_client(company_id: int = None):
-    db = SessionLocal()
-    custom_api_key = None
-    try:
-        # 1. Resolve Company custom API Key override
-        if company_id:
-            company = db.query(models.Company).filter(models.Company.id == company_id).first()
-            if company and company.custom_api_key:
-                custom_api_key = company.custom_api_key
-                
-        # 2. Check Platform-level active keys
-        if not custom_api_key:
-            plat_key = db.query(models.PlatformApiKey).filter(models.PlatformApiKey.is_active == True).first()
-            if plat_key:
-                custom_api_key = plat_key.api_key
-    except Exception:
-        pass
-    finally:
-        db.close()
-        
-    api_key_to_use = custom_api_key or settings.GEMINI_API_KEY or None
-    return genai.Client(api_key=api_key_to_use)
-
 # ---------------------------------------------------------------------------
 # Gemini key pool
 #
@@ -122,7 +100,7 @@ def _candidate_keys(db, company_id):
     if company_id:
         company = db.query(models.Company).filter(models.Company.id == company_id).first()
         if company and company.custom_api_key:
-            candidates.append((company.custom_api_key, None))
+            candidates.append((decrypt(company.custom_api_key), None))
 
     now = datetime.datetime.utcnow()
     pool = db.query(models.PlatformApiKey).filter(
@@ -131,7 +109,7 @@ def _candidate_keys(db, company_id):
     ).order_by(
         models.PlatformApiKey.last_used_at.asc().nullsfirst()  # least-recently-used first
     ).all()
-    candidates.extend((k.api_key, k) for k in pool)
+    candidates.extend((decrypt(k.api_key), k) for k in pool)
 
     if settings.GEMINI_API_KEY:
         candidates.append((settings.GEMINI_API_KEY, None))
@@ -204,17 +182,19 @@ def generate_content(*, model, contents, config, company_id: int = None):
 
 
 def get_gemini_api_key(company_id: int = None) -> str:
+    """Raw API key string for callers that talk to Gemini directly rather than through the
+    genai SDK (e.g. the Gemini Live voice WebSocket proxy, which builds its own URI)."""
     db = SessionLocal()
     custom_api_key = None
     try:
         if company_id:
             company = db.query(models.Company).filter(models.Company.id == company_id).first()
             if company and company.custom_api_key:
-                custom_api_key = company.custom_api_key
+                custom_api_key = decrypt(company.custom_api_key)
         if not custom_api_key:
             plat_key = db.query(models.PlatformApiKey).filter(models.PlatformApiKey.is_active == True).first()
             if plat_key:
-                custom_api_key = plat_key.api_key
+                custom_api_key = decrypt(plat_key.api_key)
     except Exception:
         pass
     finally:

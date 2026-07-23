@@ -4,6 +4,7 @@ from app.db.session import get_db
 from app.db import models
 from app.api.auth import get_current_superadmin
 from app.core import security
+from app.core.crypto import encrypt, decrypt
 from pydantic import BaseModel, Field
 
 router = APIRouter(dependencies=[Depends(get_current_superadmin)])
@@ -41,7 +42,7 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)):
         name=payload.name,
         license_user_limit=payload.license_user_limit,
         subscription_tier=payload.subscription_tier,
-        custom_api_key=payload.custom_api_key
+        custom_api_key=encrypt(payload.custom_api_key)
     )
     db.add(company)
     db.commit()
@@ -76,7 +77,7 @@ def edit_company(id: int, payload: CompanyEdit, db: Session = Depends(get_db)):
     company.license_user_limit = payload.license_user_limit
     company.subscription_tier = payload.subscription_tier
     if payload.custom_api_key is not None:
-        company.custom_api_key = payload.custom_api_key if payload.custom_api_key != "" else None
+        company.custom_api_key = encrypt(payload.custom_api_key) if payload.custom_api_key != "" else None
         
     db.commit()
     db.refresh(company)
@@ -158,7 +159,7 @@ def assume_user(user_id: int, db: Session = Depends(get_db)):
 # 2. Manage Platform Keys
 @router.post("/api-keys")
 def add_platform_key(payload: ApiKeyCreate, db: Session = Depends(get_db)):
-    key = models.PlatformApiKey(api_key=payload.api_key, label=getattr(payload, "label", None))
+    key = models.PlatformApiKey(api_key=encrypt(payload.api_key), label=getattr(payload, "label", None))
     db.add(key)
     db.commit()
     db.refresh(key)
@@ -174,10 +175,11 @@ def list_platform_keys(db: Session = Depends(get_db)):
     result = []
     for k in keys:
         cooling = bool(k.cooldown_until and k.cooldown_until > now)
+        plain = decrypt(k.api_key)
         result.append({
             "id": k.id,
             "label": k.label,
-            "api_key": k.api_key[:6] + "..." + k.api_key[-4:],
+            "api_key": plain[:6] + "..." + plain[-4:] if len(plain) > 10 else "***",
             "is_active": k.is_active,
             "status": "disabled" if not k.is_active else ("cooling_down" if cooling else "available"),
             "cooldown_until": k.cooldown_until.isoformat() if k.cooldown_until else None,

@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     # Gemini API
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
+    # Secret used to encrypt Gemini API keys at rest (companies.custom_api_key,
+    # platform_api_keys.api_key). Must be a urlsafe-base64 32-byte Fernet key — generate one
+    # with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Losing this key makes every stored API key permanently undecryptable.
+    ENCRYPTION_KEY: str = os.getenv("ENCRYPTION_KEY", "")
+
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
     # Number of trusted reverse-proxy hops in front of the app (Caddy + nginx = 2). The real

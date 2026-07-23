@@ -26,6 +26,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://interview_user:interview_secure_password@db:5432/ai_interview_db
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     depends_on:
       db:
         condition: service_healthy

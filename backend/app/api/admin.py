@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.db import models
 from app.api.auth import get_current_user
 from app.services.pdf_reports import build_cv_assessment_pdf, build_evaluation_pdf
+from app.core.crypto import encrypt
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -256,7 +257,7 @@ def update_company_settings(
         if data.api_key == "CLEAR":
             company.custom_api_key = None
         elif data.api_key != "••••••••" and data.api_key.strip() != "":
-            company.custom_api_key = data.api_key.strip()
+            company.custom_api_key = encrypt(data.api_key.strip())
             
     db.commit()
     db.refresh(company)
