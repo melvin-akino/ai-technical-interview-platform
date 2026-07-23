@@ -6,8 +6,12 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db import models
 from app.services.grader import generate_session_feedback
+from app.core.rate_limit import rate_limit
 
 router = APIRouter()
+
+# Grading is a Gemini call and is public (no auth on this router). Cap per IP.
+GRADE_LIMIT = rate_limit("grade", [(8, 60), (40, 3600)])
 
 def dispatch_webhook(webhook_url: str, payload: dict):
     """Asynchronously dispatches webhook payload to target URL."""
@@ -17,7 +21,7 @@ def dispatch_webhook(webhook_url: str, payload: dict):
     except Exception as e:
         print(f"Failed to dispatch webhook to {webhook_url}: {e}")
 
-@router.post("/grade/{session_id}")
+@router.post("/grade/{session_id}", dependencies=[Depends(GRADE_LIMIT)])
 def grade_session(session_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     # Lookup by session token or cast integer ID
     session = db.query(models.InterviewSession).filter(

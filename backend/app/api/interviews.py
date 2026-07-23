@@ -1,5 +1,6 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from app.core.rate_limit import rate_limit
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db import models
@@ -9,6 +10,12 @@ from pydantic import BaseModel
 import datetime
 
 router = APIRouter()
+
+# Code execution is public (candidates aren't authenticated) and runs arbitrary code in the
+# sandbox, so it's the highest-risk abuse surface. Cap runs per client IP.
+SANDBOX_LIMIT = rate_limit("sandbox", [(20, 60), (200, 3600)])
+# Session creation triggers exam generation (a Gemini call when no template exists).
+SESSION_LIMIT = rate_limit("session_create", [(10, 60), (60, 3600)])
 
 
 def localize_static_questions(q_list, target_language, job, company_id):
@@ -60,7 +67,7 @@ class SessionResponse(BaseModel):
     selected_language: str
     status: str
 
-@router.post("/session", response_model=SessionResponse)
+@router.post("/session", response_model=SessionResponse, dependencies=[Depends(SESSION_LIMIT)])
 def start_session(data: SessionCreate, db: Session = Depends(get_db)):
     candidate = db.query(models.Candidate).filter(models.Candidate.id == data.candidate_id).first()
     job = db.query(models.JobPosting).filter(models.JobPosting.id == data.job_id).first()
@@ -783,7 +790,7 @@ def execute_in_sandbox(code: str, language: str):
         if binary_path and os.path.exists(binary_path):
             os.remove(binary_path)
 
-@router.post("/run-code")
+@router.post("/run-code", dependencies=[Depends(SANDBOX_LIMIT)])
 def run_sandbox_code(data: CodeRunRequest):
     res = execute_in_sandbox(data.code, data.language)
     return {
@@ -791,7 +798,7 @@ def run_sandbox_code(data: CodeRunRequest):
         "stderr": res["stderr"]
     }
 
-@router.post("/session/{session_id}/run-tests")
+@router.post("/session/{session_id}/run-tests", dependencies=[Depends(SANDBOX_LIMIT)])
 def run_session_tests(session_id: str, data: TestRunRequest, db: Session = Depends(get_db)):
     from sqlalchemy import String
     session = db.query(models.InterviewSession).filter(

@@ -64,7 +64,12 @@ def get_current_superadmin(current_user: models.User = Depends(get_current_user)
         )
     return current_user
 
-@router.post("/login")
+from app.core.rate_limit import rate_limit
+# Throttle login attempts per IP to blunt credential brute-forcing.
+LOGIN_LIMIT = rate_limit("login", [(10, 300)])
+
+
+@router.post("/login", dependencies=[Depends(LOGIN_LIMIT)])
 def login(payload: LoginPayload, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == payload.email).first()
     if not user or not security.verify_password(payload.password, user.hashed_password):

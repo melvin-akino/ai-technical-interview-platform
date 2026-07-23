@@ -10,6 +10,12 @@ from google.genai import types
 from pydantic import BaseModel, Field
 from app.api.auth import get_current_user
 from app.core.logging_db import log_error_to_db
+from app.core.rate_limit import rate_limit
+
+# Resume/exam endpoints that each trigger one or more Gemini calls — the main cost/abuse
+# surface. Limited per client IP: bursty enough for genuine recruiter batch work, capped
+# hourly so a runaway loop can't drain the key pool.
+GEMINI_HEAVY = rate_limit("gemini_heavy", [(6, 60), (40, 3600)])
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -126,7 +132,7 @@ def delete_job(
     db.commit()
     return {"message": "Job posting deleted successfully"}
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[Depends(GEMINI_HEAVY)])
 async def upload_resume(
     file: UploadFile = File(...),
     job_id: int = Form(...),
@@ -391,7 +397,7 @@ def activate_exam_template(
     db.commit()
     return {"status": "activated", "exam_id": exam.id}
 
-@router.post("/jobs/{job_id}/exams/ai-suggest", response_model=ExamSuggestion)
+@router.post("/jobs/{job_id}/exams/ai-suggest", response_model=ExamSuggestion, dependencies=[Depends(GEMINI_HEAVY)])
 def suggest_job_exam(
     job_id: int, 
     current_user: models.User = Depends(get_current_user), 
@@ -473,7 +479,7 @@ class MatchExistingPayload(BaseModel):
     selected_language: str = "python"
     expires_at: datetime.datetime | None = None
 
-@router.post("/match-existing")
+@router.post("/match-existing", dependencies=[Depends(GEMINI_HEAVY)])
 def match_existing_candidate(
     payload: MatchExistingPayload,
     current_user: models.User = Depends(get_current_user),
@@ -558,7 +564,7 @@ def match_existing_candidate(
 from typing import List
 from app.services.resume_parser import extract_text_from_pdf
 
-@router.post("/batch-upload")
+@router.post("/batch-upload", dependencies=[Depends(GEMINI_HEAVY)])
 async def batch_upload_resumes(
     files: List[UploadFile] = File(...),
     job_id: int = Form(...),
