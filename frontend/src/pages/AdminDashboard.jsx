@@ -87,7 +87,7 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
 
   // SYSTEM / AI SETTINGS STATE
   const [settingsLoading, setSettingsLoading] = useState(false)
-  const [aiModel, setAiModel] = useState('gemini-3.5-flash')
+  const [aiModel, setAiModel] = useState('gemini-flash-latest')
   const [aiTemp, setAiTemp] = useState(0.7)
   const [aiPersonaModifier, setAiPersonaModifier] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -1351,10 +1351,9 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
                         onChange={(e) => setAiModel(e.target.value)}
                         className="form-select"
                       >
-                        <option value="gemini-3.5-flash">Gemini 3.5 Flash (Recommended - Standard)</option>
-                        <option value="gemini-2.0-flash">Gemini 2.0 Flash (Stable)</option>
+                        <option value="gemini-flash-latest">Gemini Flash (Recommended - Standard)</option>
+                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Stable)</option>
                         <option value="gemini-2.5-pro">Gemini 2.5 Pro (Analytical - Pro)</option>
-                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (Legacy Pro)</option>
                       </select>
                     </div>
 

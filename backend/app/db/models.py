@@ -183,7 +183,7 @@ class SystemSetting(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     provider_name = Column(String, default="gemini")
-    api_model = Column(String, default="gemini-3.5-flash")
+    api_model = Column(String, default="gemini-flash-latest")
     temperature = Column(Float, default=0.7)
     system_prompt_modifier = Column(Text, nullable=True)
     api_key = Column(String, nullable=True)

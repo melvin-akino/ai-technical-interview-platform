@@ -9,6 +9,14 @@ from app.core.crypto import decrypt
 from app.db.session import SessionLocal
 from app.db import models
 
+# The fallback used whenever no SystemSetting row overrides it (there is currently no admin
+# UI that writes one, so this is the model actually in effect). Use the "-latest" alias
+# rather than a dated version: "gemini-3.5-flash" was hardcoded here before and started
+# returning persistent 503 UNAVAILABLE ("experiencing high demand") with no code change on
+# our side — likely rotated out of general availability. The alias tracks whatever Gemini
+# currently designates as its stable flash model, so this class of failure shouldn't recur.
+DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
+
 def pydantic_to_gemini_schema(model_cls):
     """Convert a Pydantic model into a plain JSON-schema dict that google-genai 0.5.0 accepts.
 
@@ -43,7 +51,7 @@ def get_system_settings(company_id: int = None):
     db = SessionLocal()
     try:
         # Default fallbacks
-        model = "gemini-3.5-flash"
+        model = DEFAULT_GEMINI_MODEL
         temperature = 0.7
         prompt_modifier = ""
         
@@ -65,7 +73,7 @@ def get_system_settings(company_id: int = None):
                     
         return model, temperature, prompt_modifier
     except Exception:
-        return "gemini-3.5-flash", 0.7, ""
+        return DEFAULT_GEMINI_MODEL, 0.7, ""
     finally:
         db.close()
 
