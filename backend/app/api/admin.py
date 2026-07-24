@@ -7,6 +7,7 @@ from app.db import models
 from app.api.auth import get_current_user
 from app.services.pdf_reports import build_cv_assessment_pdf, build_evaluation_pdf
 from app.core.crypto import encrypt
+from app.core.gemini import DEFAULT_GEMINI_MODEL, ALLOWED_GEMINI_MODELS
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -217,6 +218,7 @@ class CompanySettingsUpdate(BaseModel):
     system_prompt_modifier: str = None
     api_key: str = None
     webhook_url: str = None
+    api_model: str = None
 
 @router.get("/settings")
 def get_company_settings(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -235,7 +237,9 @@ def get_company_settings(current_user: models.User = Depends(get_current_user), 
         "temperature": company.temperature or 0.7,
         "system_prompt_modifier": prompt_modifier,
         "api_key_configured": bool(company.custom_api_key),
-        "webhook_url": company.webhook_url
+        "webhook_url": company.webhook_url,
+        "api_model": company.api_model or DEFAULT_GEMINI_MODEL,
+        "available_models": ALLOWED_GEMINI_MODELS
     }
 
 @router.put("/settings")
@@ -251,7 +255,15 @@ def update_company_settings(
     company.temperature = data.temperature
     company.system_prompt_modifier = data.system_prompt_modifier
     company.webhook_url = data.webhook_url.strip() if data.webhook_url else None
-    
+
+    if data.api_model is not None:
+        if data.api_model not in ALLOWED_GEMINI_MODELS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported model '{data.api_model}'. Choose one of: {', '.join(ALLOWED_GEMINI_MODELS)}"
+            )
+        company.api_model = data.api_model
+
     # Handle custom API Key securely
     if data.api_key is not None:
         if data.api_key == "CLEAR":
@@ -267,7 +279,8 @@ def update_company_settings(
         "temperature": company.temperature,
         "system_prompt_modifier": company.system_prompt_modifier,
         "api_key_configured": bool(company.custom_api_key),
-        "webhook_url": company.webhook_url
+        "webhook_url": company.webhook_url,
+        "api_model": company.api_model or DEFAULT_GEMINI_MODEL
     }
 
 

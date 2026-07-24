@@ -11,6 +11,7 @@ class Company(Base):
     license_user_limit = Column(Integer, default=5)
     subscription_tier = Column(String, default="standard")
     custom_api_key = Column(Text, nullable=True)
+    api_model = Column(String, nullable=True)  # None = use the platform default (DEFAULT_GEMINI_MODEL)
     temperature = Column(Float, default=0.7)
     system_prompt_modifier = Column(Text, nullable=True)
     webhook_url = Column(String, nullable=True)

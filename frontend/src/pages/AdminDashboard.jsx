@@ -548,6 +548,7 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
       setApiKeyConfigured(data.api_key_configured)
       setApiKey(data.api_key_configured ? '••••••••' : '')
       setWebhookUrl(data.webhook_url || '')
+      setAiModel(data.api_model || 'gemini-flash-latest')
     } catch (err) {
       console.error('Failed to load system settings:', err)
     } finally {
@@ -572,19 +573,21 @@ function AdminDashboard({ onBackToDashboard, onLogout }) {
           temperature: aiTemp,
           system_prompt_modifier: aiPersonaModifier,
           api_key: keyToSend,
-          webhook_url: webhookUrl
+          webhook_url: webhookUrl,
+          api_model: aiModel
         })
       })
-      if (!res.ok) throw new Error('Failed to save settings')
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed to save settings')
       setApiKeyConfigured(data.api_key_configured)
       setApiKey(data.api_key_configured ? '••••••••' : '')
       setWebhookUrl(data.webhook_url || '')
+      setAiModel(data.api_model || 'gemini-flash-latest')
       setSettingsSuccess(true)
       setTimeout(() => setSettingsSuccess(false), 3000)
     } catch (err) {
       console.error(err)
-      alert('Error saving system settings.')
+      alert(err.message || 'Error saving system settings.')
     }
   }
 

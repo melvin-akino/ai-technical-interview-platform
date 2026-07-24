@@ -17,6 +17,12 @@ from app.db import models
 # currently designates as its stable flash model, so this class of failure shouldn't recur.
 DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 
+# Models recruiters may select per-company (AI Provider Settings). Kept as an allowlist,
+# not free text, so a mistyped or deprecated model name can't silently break every Gemini
+# call for that company until someone notices — exactly the failure mode DEFAULT_GEMINI_MODEL
+# just went through.
+ALLOWED_GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro"]
+
 def pydantic_to_gemini_schema(model_cls):
     """Convert a Pydantic model into a plain JSON-schema dict that google-genai 0.5.0 accepts.
 
@@ -70,7 +76,9 @@ def get_system_settings(company_id: int = None):
                     temperature = float(company.temperature)
                 if company.system_prompt_modifier:
                     prompt_modifier = company.system_prompt_modifier
-                    
+                if company.api_model and company.api_model in ALLOWED_GEMINI_MODELS:
+                    model = company.api_model
+
         return model, temperature, prompt_modifier
     except Exception:
         return DEFAULT_GEMINI_MODEL, 0.7, ""
