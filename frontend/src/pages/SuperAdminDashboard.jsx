@@ -651,16 +651,19 @@ function ApiKeysTab({ showToast }) {
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [newKey, setNewKey] = useState('')
+  const [newLabel, setNewLabel] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [revealedIds, setRevealedIds] = useState(new Set())
   const [confirm, setConfirm] = useState(null)
 
   useEffect(() => {
     loadKeys()
+    // Cooldowns expire on their own timers — refresh periodically so status/countdown
+    // reflect reality without requiring a manual reload.
+    const interval = setInterval(loadKeys, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   const loadKeys = async () => {
-    setLoading(true)
     try {
       const data = await apiFetch('/superadmin/api-keys')
       setKeys(data)
@@ -677,10 +680,11 @@ function ApiKeysTab({ showToast }) {
     try {
       await apiFetch('/superadmin/api-keys', {
         method: 'POST',
-        body: JSON.stringify({ api_key: newKey.trim() }),
+        body: JSON.stringify({ api_key: newKey.trim(), label: newLabel.trim() || null }),
       })
-      showToast('API key added successfully')
+      showToast('API key added — it will rotate into use automatically')
       setNewKey('')
+      setNewLabel('')
       setShowAddForm(false)
       loadKeys()
     } catch (err) {
@@ -700,24 +704,20 @@ function ApiKeysTab({ showToast }) {
     }
   }
 
-  const toggleReveal = (id) => {
-    setRevealedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const maskKey = (key) => {
-    if (!key) return '••••••••'
-    if (key.length <= 8) return '••••••••'
-    return key.slice(0, 4) + '•'.repeat(Math.max(key.length - 8, 4)) + key.slice(-4)
-  }
-
   const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard'))
+    navigator.clipboard.writeText(text).then(() => showToast('Masked reference copied'))
   }
+
+  // The API never returns the full key value (encrypted at rest, and the listing endpoint
+  // only exposes it pre-masked as "AIzaSy...abcd") — so there is nothing to "reveal". This
+  // deliberately does not offer a reveal action rather than pretend one exists.
+  const statusMeta = {
+    available: { label: 'Available', dot: 'active' },
+    cooling_down: { label: 'Cooling down', dot: 'warning' },
+    disabled: { label: 'Disabled', dot: 'inactive' },
+  }
+
+  const formatWhen = (iso) => iso ? new Date(iso).toLocaleString() : 'Never used'
 
   if (loading) return <LoadingSpinner />
 
@@ -729,6 +729,10 @@ function ApiKeysTab({ showToast }) {
           <Plus size={16} /> Add Key
         </button>
       </div>
+      <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '-0.5rem', marginBottom: '1rem' }}>
+        Add as many keys as you like — requests rotate across all available keys (least-recently-used) and
+        automatically fail over to the next one if a key is rate limited or rejected.
+      </p>
 
       {/* Add Key Modal */}
       {showAddForm && (
@@ -736,14 +740,16 @@ function ApiKeysTab({ showToast }) {
           <div className="sa-modal glass-panel animate-fade-in">
             <div className="sa-modal-header">
               <h3>Add Platform API Key</h3>
-              <button className="sa-close-btn" onClick={() => { setShowAddForm(false); setNewKey('') }}><X size={20} /></button>
+              <button className="sa-close-btn" onClick={() => { setShowAddForm(false); setNewKey(''); setNewLabel('') }}><X size={20} /></button>
             </div>
             <div className="sa-modal-body">
               <label className="sa-form-label">API Key *</label>
               <input className="sa-form-input" value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="Enter API key value" style={{ fontFamily: 'var(--font-mono)' }} />
+              <label className="sa-form-label" style={{ marginTop: '0.85rem' }}>Label (optional)</label>
+              <input className="sa-form-input" value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="e.g. prod-key-2" />
             </div>
             <div className="sa-modal-footer">
-              <button className="sa-btn sa-btn-ghost" onClick={() => { setShowAddForm(false); setNewKey('') }}>Cancel</button>
+              <button className="sa-btn sa-btn-ghost" onClick={() => { setShowAddForm(false); setNewKey(''); setNewLabel('') }}>Cancel</button>
               <button className="gradient-btn" onClick={handleAdd} disabled={submitting} style={{ borderRadius: 8, padding: '0.55rem 1.5rem' }}>
                 {submitting ? <Loader2 size={16} className="sa-spin" /> : 'Add Key'}
               </button>
@@ -763,36 +769,43 @@ function ApiKeysTab({ showToast }) {
         </div>
       ) : (
         <div className="sa-keys-list">
-          {keys.map((k, idx) => (
-            <div key={k.id} className="sa-key-card glass-panel animate-fade-in" style={{ animationDelay: `${idx * 50}ms` }}>
-              <div className="sa-key-main">
-                <div className="sa-key-icon-wrap">
-                  <KeyRound size={18} />
-                </div>
-                <div className="sa-key-info">
-                  <span className="sa-key-value" style={{ fontFamily: 'var(--font-mono)' }}>
-                    {revealedIds.has(k.id) ? (k.api_key || k.key || '—') : maskKey(k.api_key || k.key)}
-                  </span>
-                  <div className="sa-key-meta">
-                    <span className={`sa-status-dot ${k.is_active !== false ? 'active' : 'inactive'}`} />
-                    <span>{k.is_active !== false ? 'Active' : 'Inactive'}</span>
-                    {k.created_at && <span style={{ color: 'var(--text-muted)' }}>• Added {new Date(k.created_at).toLocaleDateString()}</span>}
+          {keys.map((k, idx) => {
+            const meta = statusMeta[k.status] || statusMeta.available
+            return (
+              <div key={k.id} className="sa-key-card glass-panel animate-fade-in" style={{ animationDelay: `${idx * 50}ms` }}>
+                <div className="sa-key-main">
+                  <div className="sa-key-icon-wrap">
+                    <KeyRound size={18} />
+                  </div>
+                  <div className="sa-key-info">
+                    <span className="sa-key-value" style={{ fontFamily: 'var(--font-mono)' }}>
+                      {k.label || `Key #${k.id}`}
+                      <span style={{ marginLeft: '0.6rem', color: 'var(--text-muted)', fontWeight: 400 }}>{k.api_key}</span>
+                    </span>
+                    <div className="sa-key-meta">
+                      <span className={`sa-status-dot ${meta.dot}`} />
+                      <span>{meta.label}{k.status === 'cooling_down' && k.cooldown_seconds_remaining > 0 ? ` (${k.cooldown_seconds_remaining}s)` : ''}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>• {k.total_calls || 0} call{k.total_calls === 1 ? '' : 's'}</span>
+                      <span style={{ color: 'var(--text-muted)' }} title={formatWhen(k.last_used_at)}>• Last used: {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never'}</span>
+                      {k.failure_count > 0 && (
+                        <span style={{ color: 'var(--danger)' }} title={k.last_error || ''}>
+                          • {k.failure_count} failure{k.failure_count === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
+                <div className="sa-key-actions">
+                  <button className="sa-icon-btn" title="Copy masked reference" onClick={() => copyToClipboard(k.api_key)}>
+                    <Copy size={16} />
+                  </button>
+                  <button className="sa-icon-btn sa-icon-btn-danger" title="Delete Key" onClick={() => setConfirm({ message: `Remove "${k.label || `Key #${k.id}`}" from the rotation pool? This cannot be undone.`, onConfirm: () => handleDelete(k.id) })}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-              <div className="sa-key-actions">
-                <button className="sa-icon-btn" title={revealedIds.has(k.id) ? 'Hide' : 'Reveal'} onClick={() => toggleReveal(k.id)}>
-                  {revealedIds.has(k.id) ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-                <button className="sa-icon-btn" title="Copy" onClick={() => copyToClipboard(k.api_key || k.key || '')}>
-                  <Copy size={16} />
-                </button>
-                <button className="sa-icon-btn sa-icon-btn-danger" title="Delete Key" onClick={() => setConfirm({ message: 'Are you sure you want to delete this API key? This cannot be undone.', onConfirm: () => handleDelete(k.id) })}>
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -1357,6 +1370,11 @@ const STYLES = `
 
   .sa-status-dot.inactive {
     background: var(--text-muted);
+  }
+
+  .sa-status-dot.warning {
+    background: var(--warning);
+    box-shadow: 0 0 6px var(--warning);
   }
 
   .sa-key-actions {
