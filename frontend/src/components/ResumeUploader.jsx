@@ -309,12 +309,17 @@ function ResumeUploader({ onStartInterview }) {
                 onChange={(e) => setSelectedLanguage(e.target.value)}
                 className="ru-form-select"
               >
+                {/* Must stay in sync with the sandbox's ext_map in backend/app/api/interviews.py.
+                    Java was previously listed here but has no sandbox entry, so a candidate
+                    assigned a Java interview could not run their code at all — the runner
+                    returned "Language 'java' is not supported in the live sandbox". */}
                 <option value="python">Python</option>
                 <option value="javascript">JavaScript</option>
                 <option value="typescript">TypeScript</option>
                 <option value="go">Go</option>
-                <option value="java">Java</option>
                 <option value="cpp">C++</option>
+                <option value="c">C</option>
+                <option value="php">PHP</option>
               </select>
             </div>
 

@@ -37,13 +37,13 @@ function LandingPage({ onRecruiterLogin, onCandidateExam }) {
     {
       icon: <FileText size={22} />,
       title: 'AI Resume Parsing & Matching',
-      desc: 'Upload CVs in any format. Our AI extracts skills, experience, and qualifications — then matches candidates to roles with precision scoring.',
+      desc: 'Upload candidate CVs as PDF. Our AI extracts skills, experience, and qualifications — then scores each candidate against the role.',
       color: 'var(--primary)'
     },
     {
       icon: <Code size={22} />,
       title: 'Live Coding Interviews',
-      desc: 'Real-time code editor supporting Python, JavaScript, Java, C++, and more. Candidates write, compile, and run code in an isolated sandbox.',
+      desc: 'Real-time code editor supporting Python, JavaScript, TypeScript, Go, C, C++, PHP, and SQL. Candidates write, compile, and run code in an isolated sandbox.',
       color: 'var(--secondary)'
     },
     {
@@ -61,13 +61,13 @@ function LandingPage({ onRecruiterLogin, onCandidateExam }) {
     {
       icon: <Users size={22} />,
       title: 'Multi-Tenant SaaS Architecture',
-      desc: 'Each company gets isolated data, custom branding, and dedicated exam pools. Scale from startups to enterprise with zero friction.',
+      desc: 'Each company gets fully isolated data, its own job postings, candidate pool, and exam templates — with per-company AI settings.',
       color: 'var(--success)'
     },
     {
       icon: <Layers size={22} />,
       title: 'Customizable Exam Templates',
-      desc: 'Build exams from a library of coding challenges, or let AI generate custom problems based on your job descriptions and skill requirements.',
+      desc: 'Build exams from a starter library of coding challenges, or let AI generate custom problems based on your job descriptions and skill requirements.',
       color: 'var(--danger)'
     }
   ]
@@ -155,11 +155,16 @@ function LandingPage({ onRecruiterLogin, onCandidateExam }) {
     }
   ]
 
+  // Verifiable product capabilities, not performance/traction claims. These previously read
+  // "85% Faster Screening / 3.5x More Hires / 92% Bias Reduction / 10K+ Interviews Conducted",
+  // which were template placeholders with no data behind them — a real misrepresentation to
+  // prospective buyers, and a credibility risk in a category already under scrutiny for
+  // unverified bias claims. Anything added here must be checkable against the product.
   const stats = [
-    { value: '85%', label: 'Faster Screening' },
-    { value: '3.5x', label: 'More Hires' },
-    { value: '92%', label: 'Bias Reduction' },
-    { value: '10K+', label: 'Interviews Conducted' }
+    { value: '7', label: 'Coding Languages' },
+    { value: '3', label: 'Progressive Challenges' },
+    { value: '24/7', label: 'Async Interviews' },
+    { value: '100%', label: 'Sessions Proctored' }
   ]
 
   return (
@@ -206,8 +211,8 @@ function LandingPage({ onRecruiterLogin, onCandidateExam }) {
             <span className="gradient-text">Technical Interviews</span>
           </h1>
           <p className="lp-hero-subtitle">
-            Eliminate unconscious bias, slash screening time by 85%, and discover top engineering talent
-            with Gemini-powered live coding assessments, intelligent resume matching, and automated grading.
+            Give every candidate the same structured technical interview — Gemini-powered live coding
+            assessments, AI resume matching, and a detailed scorecard for every submission.
           </p>
           <div className="lp-hero-ctas">
             <button onClick={onRecruiterLogin} className="gradient-btn lp-hero-btn lp-hero-btn--primary">
@@ -313,7 +318,8 @@ function LandingPage({ onRecruiterLogin, onCandidateExam }) {
             Ready to Transform Your <span className="gradient-text">Technical Hiring?</span>
           </h2>
           <p className="lp-final-cta-desc">
-            Join hundreds of companies using AuraInterview to find, assess, and hire the best engineering talent — powered by AI.
+            We're onboarding our first teams now. Run your technical screening on AuraInterview and help
+            shape where the platform goes next.
           </p>
           <div className="lp-final-cta-btns">
             <button onClick={onRecruiterLogin} className="gradient-btn lp-hero-btn lp-hero-btn--primary">
